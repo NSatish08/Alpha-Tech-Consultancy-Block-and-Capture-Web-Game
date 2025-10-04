@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Block and Capture Board Game (Diagonal Capture Rules)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+  /* --- General Layout and Reset --- */
+  body {
+    touch-action: manipulation;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #e0e0e0;
+    margin: 0;
+    padding: 10px;
+    box-sizing: border-box;
+  }
+
+  .game-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 10px;
+    background-color: #fff;
+    padding: 15px;
+    border-radius: 12px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+    width: 95%;
+    max-width: 420px;
+    box-sizing: border-box;
+  }
+
+  /* --- Info & Score Panels --- */
+  .info-panel {
+    margin-bottom: 12px;
+    font-size: 1.1em;
+    font-weight: 700;
+    color: #1a1a1a;
+    text-align: center;
+    min-height: 2.5em;
+    padding: 5px;
+  }
+
+  .score-panel {
+    margin-top: 5px;
+    margin-bottom: 15px;
+    font-size: 0.95em;
+    color: #555;
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  /* --- Game Board Styling --- */
+  .board {
+    display: grid;
+    gap: 6px;
+    background-color: #444;
+    border: 4px solid #333;
+    padding: 4px;
+    border-radius: 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .slot {
+    background-color: #f5f5f5;
+    border: 2px solid #ccc;
+    box-sizing: border-box;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 6px;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .non-slot {
+    background-color: #444;
+    border: 2px solid #444;
+    cursor: not-allowed;
+  }
+
+  /* --- Dot Styling --- */
+  .dot-emoji {
+    font-size: 40px;
+    line-height: 1;
+    position: absolute;
+    user-select: none;
+    cursor: default;
+  }
+
+  /* --- Interaction Highlights --- */
+  .selected {
+    border: 3px solid #0056b3;
+    box-shadow: 0 0 15px rgba(0, 86, 179, 0.9);
+  }
+
+  .highlight-move {
+    background-color: #c8e6c9; /* Light Green */
+    cursor: pointer;
+    border: 2px dashed #388e3c;
+  }
+  
+  .highlight-capture {
+    background-color: #ffcdd2; /* Light Red */
+    cursor: pointer;
+    border: 2px dashed #d32f2f;
+  }
+
+  /* --- Button Styling --- */
+  button {
+    margin-top: 25px;
+    padding: 12px 25px;
+    font-size: 1.05em;
+    cursor: pointer;
+    background-color: #0056b3;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+    width: 80%;
+    max-width: 250px;
+    font-weight: 600;
+  }
+
+  button:hover {
+    background-color: #004494;
+  }
+
+  /* --- Marquee/Footer --- */
+  .marquee-container {
+    width: 100%;
+    overflow: hidden;
+    margin-top: 30px;
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    padding: 10px 0;
+    text-align: center;
+    font-size: 1em;
+    white-space: nowrap;
+    box-sizing: border-box;
+  }
+
+  .marquee-text {
+    display: inline-block;
+    padding-left: 100%;
+    animation: marquee 18s linear infinite;
+  }
+
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-100%); }
+  }
+</style>
+</head>
+<body>
+
+<div class="game-container">
+  <div class="info-panel" id="infoPanel"></div>
+  <div class="score-panel" id="gotDotCountPanel"></div>
+  <div class="board" id="gameBoard">
+  </div>
+  <button onclick="resetGame()">Reset Game</button>
+</div>
+
+<div class="marquee-container">
+  <span class="marquee-text">MSH GAMING BY ALPHA TECH CONSULTANCY KADAPA | Designed by the Founder</span>
+</div>
+
+<script>
+  // --- Constants and State Variables ---
+  const boardElement = document.getElementById('gameBoard');
+  const infoPanel = document.getElementById('infoPanel');
+  const gotDotCountPanel = document.getElementById('gotDotCountPanel');
+
+  const GAME_BOARD_MATRIX = [
+    ['N', 'N', 'R', 'N', 'N'],
+    ['P', 'P', 'R', 'P', 'P'],
+    ['P', 'P', 'R', 'P', 'P'],
+    ['P', 'P', 'R', 'P', 'P'],
+    ['P', 'P', 'P', 'P', 'P'],
+    ['N', 'P', 'P', 'P', 'N']
+  ];
+
+  const BOARD_ROWS = GAME_BOARD_MATRIX.length;
+  const BOARD_COLS = GAME_BOARD_MATRIX[0].length;
+  const BOARD_GAP = 6;
+
+  const MAX_GOT_DOTS = 18;
+
+  // Custom connection coordinates (r1, c1) <-> (r2, c2)
+  const CUSTOM_CONNECTIONS = [
+      { r1: 0, c1: 2, r2: 1, c2: 1 },
+      { r1: 0, c1: 2, r2: 1, c2: 3 },
+      { r1: 1, c1: 0, r2: 2, c2: 0 },
+      { r1: 3, c1: 0, r2: 4, c2: 0 },
+      { r1: 3, c1: 4, r2: 2, c2: 4 },
+      { r1: 3, c1: 4, r2: 4, c2: 4 }
+  ];
+
+  // Specific Jump Captures (Start -> Middle -> End)
+  const DIAGONAL_CAPTURES = [
+      { start: {r: 2, c: 1}, middle: {r: 1, c: 1}, end: {r: 0, c: 2} },
+      { start: {r: 0, c: 2}, middle: {r: 1, c: 2}, end: {r: 2, c: 2} },
+      { start: {r: 2, c: 3}, middle: {r: 1, c: 3}, end: {r: 0, c: 2} }
+  ];
+
+  // Game State
+  let gameState = {
+    currentPlayer: 'Got',
+    selectedDot: null,
+    possibleMoves: [],
+    gotDotsPlaced: 0,
+    gotDotsEliminated: 0,
+    canGotMove: false,
+    gameOver: false,
+  };
+
+
+  // --- DOM & Board Utility Functions ---
+
+  function getSlot(row, col) {
+    if (row < 0 || row >= BOARD_ROWS || col < 0 || col >= BOARD_COLS || GAME_BOARD_MATRIX[row][col] === 'N') {
+      return null;
+    }
+    // Using querySelector to find the slot element based on data attributes
+    return boardElement.querySelector(`.slot[data-row="${row}"][data-col="${col}"]`);
+  }
+
+  function getDot(row, col) {
+      const slot = getSlot(row, col);
+      return slot ? slot.querySelector('.dot-emoji') : null;
+  }
+
+  function calculateAndSetBoardLayout() {
+    const boardPadding = 8;
+    const boardWidth = boardElement.clientWidth - boardPadding;
+    const slotSize = (boardWidth - (BOARD_COLS - 1) * BOARD_GAP) / BOARD_COLS;
+    
+    boardElement.style.gridTemplateColumns = `repeat(${BOARD_COLS}, ${slotSize}px)`;
+    boardElement.style.gridTemplateRows = `repeat(${BOARD_ROWS}, ${slotSize}px)`;
+
+    document.querySelectorAll('.slot').forEach(slot => {
+        slot.style.width = `${slotSize}px`;
+        slot.style.height = `${slotSize}px`;
+    });
+  }
+
+  function createBoardElements() {
+    boardElement.innerHTML = '';
+    calculateAndSetBoardLayout();
+
+    for (let r = 0; r < BOARD_ROWS; r++) {
+      for (let c = 0; c < BOARD_COLS; c++) {
+        const slot = document.createElement('div');
+        slot.classList.add('slot');
+        slot.dataset.row = r;
+        slot.dataset.col = c;
+        slot.addEventListener('click', handleSlotClick);
+
+        if (GAME_BOARD_MATRIX[r][c] === 'N') {
+          slot.classList.add('non-slot');
+          slot.removeEventListener('click', handleSlotClick);
+        }
+        boardElement.appendChild(slot);
+      }
+    }
+  }
+
+  function setupInitialDots() {
+    document.querySelectorAll('.dot-emoji').forEach(dot => dot.remove());
+
+    for (let r = 0; r < BOARD_ROWS; r++) {
+      for (let c = 0; c < BOARD_COLS; c++) {
+        if (GAME_BOARD_MATRIX[r][c] === 'R') {
+          const slot = getSlot(r, c);
+          if (slot) {
+            placeDot(slot, 'Tiger');
+          }
+        }
+      }
+    }
+  }
+
+  function updateInfoPanels() {
+    let message = '';
+    const player = gameState.currentPlayer;
+
+    if (gameState.gameOver) {
+      // Message is set in checkWinConditions
+      return;
+    }
+
+    if (player === 'Got') {
+      if (gameState.gotDotsPlaced < MAX_GOT_DOTS) {
+        message = `Click an empty slot to **place** a 🐏 dot (${gameState.gotDotsPlaced}/${MAX_GOT_DOTS} placed)`;
+      } else {
+        message = `**Move** a 🐏 dot. Click to select, then click an empty adjacent slot.`;
+      }
+    } else { // Tiger
+      message = `**Move or Capture** with a 🐯 dot. Can use standard jumps and the specific diagonal jumps.`;
+    }
+
+    infoPanel.innerHTML = `**${player}'s Turn:** ${message}`;
+
+    const remaining = MAX_GOT_DOTS - gameState.gotDotsPlaced;
+    gotDotCountPanel.innerHTML = `
+      No. of 🐏 dots remaining to place: *${remaining}*<br>
+      Total on Board: *${gameState.gotDotsPlaced}* | Eliminated: *${gameState.gotDotsEliminated}*
+    `;
+  }
+
+  function clearHighlights() {
+    document.querySelectorAll('.highlight-move, .highlight-capture, .selected').forEach(el => {
+      el.classList.remove('highlight-move', 'highlight-capture', 'selected');
+    });
+    gameState.possibleMoves = [];
+  }
+
+  // --- Game Logic Functions ---
+
+  function isConnected(r1, c1, r2, c2) {
+      // 1. Standard orthogonal (step 1)
+      if ((Math.abs(r1 - r2) === 1 && c1 === c2) || (Math.abs(c1 - c2) === 1 && r1 === r2)) {
+          return true;
+      }
+      
+      // 2. Custom connections
+      return CUSTOM_CONNECTIONS.some(conn => 
+          (r1 === conn.r1 && c1 === conn.c1 && r2 === conn.r2 && c2 === conn.c2) ||
+          (r1 === conn.r2 && c1 === conn.c2 && r2 === conn.r1 && c2 === conn.c1)
+      );
+  }
+  
+  function highlightPossibleMoves(dotElement) {
+    clearHighlights();
+
+    const slot = dotElement.closest('.slot');
+    const startR = parseInt(slot.dataset.row);
+    const startC = parseInt(slot.dataset.col);
+    const player = dotElement.dataset.player;
+
+    const orthogonalDirections = [
+      { dr: -1, dc: 0 }, { dr: 1, dc: 0 },
+      { dr: 0, dc: -1 }, { dr: 0, dc: 1 }
+    ];
+    
+    const allPossibleTargets = new Set(); 
+
+    // --- 1. Standard Step Moves (Orthogonal and Custom Paths) ---
+    const canMove = player === 'Tiger' || (player === 'Got' && gameState.canGotMove);
+    if (canMove) {
+        for (let r = 0; r < BOARD_ROWS; r++) {
+            for (let c = 0; c < BOARD_COLS; c++) {
+                if (getSlot(r, c) && isConnected(startR, startC, r, c)) {
+                    const targetSlot = getSlot(r, c);
+                    if (targetSlot && targetSlot.querySelector('.dot-emoji') === null) {
+                        const moveKey = `${r},${c}`;
+                        if (!allPossibleTargets.has(moveKey)) {
+                            targetSlot.classList.add('highlight-move');
+                            gameState.possibleMoves.push({ slot: targetSlot, type: 'move' });
+                            allPossibleTargets.add(moveKey);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // --- 2. Tiger Jump Captures ---
+    if (player === 'Tiger') {
+        
+        // A. Standard Orthogonal Jumps
+        for (const dir of orthogonalDirections) {
+            const middleR = startR + dir.dr;
+            const middleC = startC + dir.dc;
+            const jumpR = startR + 2 * dir.dr;
+            const jumpC = startC + 2 * dir.dc;
+
+            const middleDot = getDot(middleR, middleC);
+            const jumpSlot = getSlot(jumpR, jumpC);
+            
+            if (middleDot && middleDot.dataset.player === 'Got' && jumpSlot && jumpSlot.querySelector('.dot-emoji') === null) {
+                const moveKey = `${jumpR},${jumpC}`;
+                if (!allPossibleTargets.has(moveKey)) {
+                    jumpSlot.classList.add('highlight-capture');
+                    gameState.possibleMoves.push({ slot: jumpSlot, type: 'capture', capturedDot: middleDot });
+                    allPossibleTargets.add(moveKey);
+                }
+            }
+        }
+        
+        // B. Custom Diagonal Jumps
+        for (const capture of DIAGONAL_CAPTURES) {
+            let middleDot = null;
+            let targetSlot = null;
+            let targetR, targetC;
+
+            // Check start->end jump
+            if (startR === capture.start.r && startC === capture.start.c) {
+                middleDot = getDot(capture.middle.r, capture.middle.c);
+                targetSlot = getSlot(capture.end.r, capture.end.c);
+                targetR = capture.end.r; targetC = capture.end.c;
+            } 
+            // Check end->start jump (reverse)
+            else if (startR === capture.end.r && startC === capture.end.c) {
+                middleDot = getDot(capture.middle.r, capture.middle.c);
+                targetSlot = getSlot(capture.start.r, capture.start.c);
+                targetR = capture.start.r; targetC = capture.start.c;
+            }
+
+            if (middleDot && middleDot.dataset.player === 'Got' && targetSlot && targetSlot.querySelector('.dot-emoji') === null) {
+                const moveKey = `${targetR},${targetC}`;
+                
+                if (!allPossibleTargets.has(moveKey)) {
+                    targetSlot.classList.add('highlight-capture');
+                    gameState.possibleMoves.push({ slot: targetSlot, type: 'capture', capturedDot: middleDot });
+                    allPossibleTargets.add(moveKey);
+                }
+            }
+        }
+    }
+  }
+
+  function handleSlotClick(event) {
+    if (gameState.gameOver) return;
+
+    const clickedSlot = event.currentTarget;
+    const clickedDot = clickedSlot.querySelector('.dot-emoji');
+    const { currentPlayer, selectedDot, possibleMoves, gotDotsPlaced, canGotMove } = gameState;
+
+    // --- 1. Attempt Move/Capture ---
+    if (selectedDot) {
+      const moveInfo = possibleMoves.find(m => m.slot === clickedSlot);
+      if (moveInfo) {
+        moveDot(selectedDot, clickedSlot, moveInfo.capturedDot);
+        gameState.selectedDot = null;
+        clearHighlights();
+        switchTurn();
+        checkWinConditions();
+        return;
+      }
+    }
+    
+    // --- 2. Clear Selection or Select New Dot ---
+    if (selectedDot) {
+        // Clear selection if no valid move was made
+        gameState.selectedDot = null;
+        clearHighlights();
+    }
+
+
+    if (currentPlayer === 'Got') {
+        // Placement
+        if (!clickedDot && gotDotsPlaced < MAX_GOT_DOTS) {
+            placeDot(clickedSlot, 'Got');
+            gameState.gotDotsPlaced++;
+            if (gameState.gotDotsPlaced === MAX_GOT_DOTS) {
+                gameState.canGotMove = true;
+            }
+            switchTurn();
+            checkWinConditions();
+        }
+        // Selection (only if goats can move)
+        else if (clickedDot && clickedDot.dataset.player === 'Got' && canGotMove) {
+            gameState.selectedDot = clickedDot;
+            clickedSlot.classList.add('selected');
+            highlightPossibleMoves(clickedDot);
+        }
+    } else { // Tiger
+        // Selection
+        if (clickedDot && clickedDot.dataset.player === 'Tiger') {
+            gameState.selectedDot = clickedDot;
+            clickedSlot.classList.add('selected');
+            highlightPossibleMoves(clickedDot);
+        }
+    }
+  }
+  
+  function placeDot(targetSlot, player) {
+      const newDot = document.createElement('div');
+      newDot.classList.add('dot-emoji');
+      newDot.textContent = player === 'Got' ? '🐏' : '🐯';
+      newDot.dataset.player = player;
+      targetSlot.appendChild(newDot);
+  }
+
+  function moveDot(dotElement, targetSlot, capturedDot = null) {
+    // Handle capture
+    if (capturedDot && capturedDot.dataset.player === 'Got') {
+      capturedDot.remove();
+      gameState.gotDotsEliminated++;
+    }
+    
+    // Move the dot
+    targetSlot.appendChild(dotElement);
+  }
+
+  function switchTurn() {
+    gameState.currentPlayer = gameState.currentPlayer === 'Got' ? 'Tiger' : 'Got';
+    updateInfoPanels();
+  }
+
+  function checkWinConditions() {
+    const allTigerDots = document.querySelectorAll('.dot-emoji[data-player="Tiger"]');
+    
+    // --- Win Condition 1: Tiger Wins (Elimination) ---
+    if (gameState.gotDotsEliminated >= MAX_GOT_DOTS) { // Win if all 18 goats are captured
+      infoPanel.innerHTML = "<span style='color:red;'>🐯 TIGER PLAYER WINS!</span> All 🐏 dots eliminated.";
+      gameState.gameOver = true;
+      disableGameInteraction();
+      return true;
+    }
+    
+    // --- Win Condition 2: Got Wins (Blocking) ---
+    let allTigerBlocked = true;
+    if (allTigerDots.length > 0 && gameState.gotDotsPlaced === MAX_GOT_DOTS) {
+      for (const tigerDot of allTigerDots) {
+        // Check moves for the specific tiger
+        const tempMoves = [];
+        // Temporarily override to use the local moves check logic
+        highlightPossibleMoves(tigerDot); 
+        
+        if (gameState.possibleMoves.length > 0) {
+          allTigerBlocked = false;
+          break;
+        }
+      }
+      clearHighlights(); // Clear highlights after checking moves
+      
+      if (allTigerBlocked) {
+        infoPanel.innerHTML = "<span style='color:green;'>🐏 GOT PLAYER WINS!</span> All 🐯 dots are blocked.";
+        gameState.gameOver = true;
+        disableGameInteraction();
+        return true;
+      }
+    }
+
+    return false;
+  }
+  
+  function disableGameInteraction() {
+      document.querySelectorAll('.slot').forEach(slot => {
+        slot.removeEventListener('click', handleSlotClick);
+      });
+  }
+
+
+  function initializeGame() {
+    // Reset State
+    gameState = {
+        currentPlayer: 'Got',
+        selectedDot: null,
+        possibleMoves: [],
+        gotDotsPlaced: 0,
+        gotDotsEliminated: 0,
+        canGotMove: false,
+        gameOver: false,
+    };
+    
+    createBoardElements();
+    setupInitialDots();
+    clearHighlights();
+    updateInfoPanels();
+  }
+
+  function resetGame() {
+    initializeGame();
+  }
+
+  // --- Mobile Responsiveness Adjustments (State Preservation) ---
+  window.addEventListener('resize', () => {
+    if (boardElement.clientWidth > 0) {
+      // 1. Save current dot positions
+      const dotPositions = [];
+      document.querySelectorAll('.slot').forEach(slot => {
+          const dot = slot.querySelector('.dot-emoji');
+          if (dot) {
+              dotPositions.push({
+                  r: parseInt(slot.dataset.row),
+                  c: parseInt(slot.dataset.col),
+                  player: dot.dataset.player
+              });
+          }
+      });
+      
+      // 2. Re-create and re-layout board elements
+      createBoardElements();
+      
+      // 3. Restore dot positions
+      dotPositions.forEach(pos => {
+          const newSlot = getSlot(pos.r, pos.c);
+          if (newSlot) {
+              placeDot(newSlot, pos.player);
+          }
+      });
+      
+      // 4. Restore selection and info
+      gameState.selectedDot = null;
+      clearHighlights();
+      updateInfoPanels();
+      if (gameState.gameOver) disableGameInteraction();
+    }
+  });
+
+
+  // Initial call to set up the game
+  initializeGame();
+</script>
+</body>
+</html>
